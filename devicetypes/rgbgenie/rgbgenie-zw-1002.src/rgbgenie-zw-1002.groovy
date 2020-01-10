@@ -173,7 +173,7 @@ def setColor(value) {
 		def c = colorUtil.hexToRgb(value.hex)
 		result << zwave.switchColorV3.switchColorSet(red:c[0], green:c[1], blue:c[2], warmWhite:0, coldWhite:0)
 	} else {
-		def rgb = huesatToRGB(vale.hue, value.saturation)
+		def rgb = huesatToRGB(value.hue, value.saturation)
 		result << zwave.switchColorV3.switchColorSet(red: rgb[0], green: rgb[1], blue: rgb[2], warmWhite:0, coldWhite:0)
 	}
 
