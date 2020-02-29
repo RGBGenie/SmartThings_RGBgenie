@@ -13,7 +13,8 @@
  *  for the specific language governing permissions and limitations under the License.
  */
 metadata {
-	definition (name: "RGBGenie LED Controller", namespace: "rgbgenie", author: "Bryan Copeland", cstHandler: true) {
+	definition (name: "RGBGenie LED Controller", namespace: "rgbgenie", author: "Bryan Copeland", ocfDeviceType: "oic.d.light", mnmn: "SmartThings", vid: "generic-rgbw-color-bulb",
+				runLocally: false, minHubCoreVersion: '000.017.0012', executeCommandsLocally: false) {
 		capability "Switch"
 		capability "Switch Level"
 		capability "Color Control"
@@ -44,24 +45,14 @@ metadata {
 		input name: "loadStateSave", type: "enum", description: "", title: "Power fail load state restore", defaultValue: 0, required: true, displayDuringSetup: true, options: [0: "Shut Off Load", 1: "Turn On Load", 2: "Restore Last State"]
 		input name: "stageModeSpeed", type: "number", description: "", title: "Light Effect Speed 0-255 (default 243)", defaultValue: 243, displayDuringSetup: true, required: true
 		input name: "stageModeHue", type: "number", description: "", title: "Hue Of Fixed Color Light Effects 0-360", defaultValue: 0, displayDuringSetup:true, required: true
-		input name: "logLevel", type: "enum", title: "Logging Level", options: [1: "Error", 2: "Warn", 3: "Info", 4: "Debug", 5: "Trace"], required: false, displayDuringSetup: false, defaultValue: 4
-		if (deviceType=="" || deviceType==null) {
-			input description: "The device type has not been detected.. Please press the configure button", title: "Device Type Detection", displayDuringSetup: false, type: "paragraph", element: "paragraph"
-		} else {
-			if (deviceType == 1 || deviceType== 2) {
-				// Color, or Color Temperature Model-specific settings
-				input name: "colorPrestage", type: "bool", description: "", title: "Enable Color Prestaging", defaultValue: false, required: true
-				input name: "colorDuration", type: "number", description: "", title: "Color Transition Duration", defaultValue: 3, required: true			
-			}
-			if (deviceType==2) {
-				// Color Model-specific settings
-				input name: "wwComponent", type: "bool", description: "", title: "Enable Warm White Component", defaultValue: true, required: true
-				input name: "wwKelvin", type: "number", description: "", title: "Warm White Temperature", defaultValue: 2700, required: true
-				input name: "hueMode", type: "bool", description: "", title: "Send hue in 0-100 (off) or 0-360 (on)", defaultValue: false, required: true
-				input name: "enableGammaCorrect", type: "bool", description: "May cause a slight difference in reported color", title: "Enable gamma correction on setColor", defaultValue: false, required: true
-			}
+//		input name: "logLevel", type: "enum", title: "Logging Level", options: [1: "Error", 2: "Warn", 3: "Info", 4: "Debug", 5: "Trace"], required: false, displayDuringSetup: false, defaultValue: 4
+		input name: "colorPrestage", type: "bool", description: "", title: "Enable Color Prestaging", defaultValue: false, required: true
+		input name: "colorDuration", type: "number", description: "", title: "Color Transition Duration", defaultValue: 3, required: true			
+		input name: "wwComponent", type: "bool", description: "", title: "Enable Warm White Component", defaultValue: true, required: true
+		input name: "wwKelvin", type: "number", description: "", title: "Warm White Temperature", defaultValue: 2700, required: true
+		input name: "hueMode", type: "bool", description: "", title: "Send hue in 0-100 (off) or 0-360 (on)", defaultValue: false, required: true
+		input name: "enableGammaCorrect", type: "bool", description: "May cause a slight difference in reported color", title: "Enable gamma correction on setColor", defaultValue: false, required: true
 
-		}
 	}
 
 	simulator {
@@ -69,8 +60,29 @@ metadata {
 	}
 
 	tiles {
-		// TODO: define your main and details tiles here
+    	multiAttributeTile(name:"switch", type: "lighting", width: 1, height: 1, canChangeIcon: true) {
+			tileAttribute("device.switch", key: "PRIMARY_CONTROL") {
+				attributeState("on", label:'${name}', action:"switch.off", icon:"st.lights.philips.hue-single", backgroundColor:"#00a0dc", nextState:"turningOff")
+				attributeState("off", label:'${name}', action:"switch.on", icon:"st.lights.philips.hue-single", backgroundColor:"#ffffff", nextState:"turningOn")
+				attributeState("turningOn", label:'${name}', action:"switch.off", icon:"st.lights.philips.hue-single", backgroundColor:"#00a0dc", nextState:"turningOff")
+				attributeState("turningOff", label:'${name}', action:"switch.on", icon:"st.lights.philips.hue-single", backgroundColor:"#ffffff", nextState:"turningOn")
+			}
+
+			tileAttribute ("device.level", key: "SLIDER_CONTROL") {
+				attributeState "level", action:"switch level.setLevel"
+			}
+
+			tileAttribute ("device.color", key: "COLOR_CONTROL") {
+				attributeState "color", action:"color control.setColor"
+			}
+		}
+
 	}
+	controlTile("colorTempSliderControl", "device.colorTemperature", "slider", width: 4, height: 2, inactiveLabel: false, range:"(2700..6500)") {
+		state "colorTemperature", action:"color temperature.setColorTemperature"
+	}
+    main(["switch"])
+	details(["switch", "levelSliderControl", "rgbSelector", "colorTempSliderControl"])
 }
 
 private getRGBW_NAMES() { [RED, GREEN, BLUE, WARM_WHITE] }
@@ -91,13 +103,15 @@ private getZWAVE_COLOR_COMPONENT_ID() { [warmWhite: 0, coldWhite: 1, red: 2, gre
 
 // parse events into attributes
 def parse(description) {
+	def result=null
 	if (description != "updated") {
-		def cmd = zwave.parse(description, CMD_CLASS_VERS)
+		def cmd = zwave.parse(description)
+        log.debug "parse: ${cmd}"
 		if (cmd) {
 			result = zwaveEvent(cmd)
-			logDebug("${description} parsed to $result")
+			log.debug("${description} parsed to $result")
 		} else {
-			logWarn("unable to parse: ${description}")
+			log.warn("unable to parse: ${description}")
 		}
 	}
 }
@@ -146,16 +160,16 @@ def interrogate() {
 }
 
 def updated() {
-	logDebug "updated().."
-	log.info "Logging level is ${logLevel}"
+	log.debug "updated().."
 	def cmds = [] 
-    logDebug "deviceModel: "+currentValue("deviceModel") + " Updated setting: ${deviceType}"
-	cmds << zwave.configurationV2.configurationSet([parameterNumber: 4, size: 1, scaledConfigurationValue: deviceType.toInteger()])
-	cmds << zwave.configurationV2.configurationGet([parameterNumber: 4])
-	cmds << zwave.configurationV2.configurationSet([parameterNumber: 2, size: 1, scaledConfigurationValue: loadStateSave])
-	cmds << zwave.configurationV2.configurationSet([parameterNumber: 6, size: 1, configurationValue: [stageModeSpeed as Integer]])
-	cmds << zwave.configurationV2.configurationSet([parameterNumber: 8, size: 1, scaledConfigurationValue: hueToHueByte(stageModeHue)])
-    logDebug "commands: ${cmds}"
+    if (deviceType) {
+		cmds << zwave.configurationV2.configurationSet([parameterNumber: 4, size: 1, scaledConfigurationValue: deviceType.toInteger()])
+		cmds << zwave.configurationV2.configurationGet([parameterNumber: 4])
+	}
+	if (loadStateSave) cmds << zwave.configurationV2.configurationSet([parameterNumber: 2, size: 1, scaledConfigurationValue: loadStateSave.toInteger()])
+	if (stageModeSpeed) cmds << zwave.configurationV2.configurationSet([parameterNumber: 6, size: 1, scaledConfigurationValue: stageModeSpeed.toInteger()])
+	if (stageModeHue) cmds << zwave.configurationV2.configurationSet([parameterNumber: 8, size: 1, scaledConfigurationValue: hueToHueByte(stageModeHue)])
+    log.debug "commands: ${cmds}"
 	commands(cmds)
 }
 
@@ -180,6 +194,7 @@ private initializeVars() {
 
 def installed() {
 	log.info "installed()..."
+    initializeVars()
 	def cmds = []
     cmds << zwave.associationV2.associationGet(groupingIdentifier:1)
     cmds << zwave.configurationV2.configurationGet([parameterNumber: 4])
@@ -249,6 +264,7 @@ def setPreviousEffect() {
 }
 
 def zwaveEvent(physicalgraph.zwave.commands.basicv1.BasicReport cmd) {
+	log.debug "Basic Report: ${cmd}"
 	dimmerEvents(cmd)
 }
 
@@ -257,63 +273,72 @@ def zwaveEvent(physicalgraph.zwave.commands.basicv1.BasicSet cmd) {
 }
 
 def zwaveEvent(physicalgraph.zwave.commands.switchmultilevelv3.SwitchMultilevelReport cmd) {
+	log.debug "Switch Multi Level Report 3: ${cmd}"
+	dimmerEvents(cmd)
+}
+
+def zwaveEvent(physicalgraph.zwave.commands.switchmultilevelv2.SwitchMultilevelReport cmd) {
+	log.debug "Switch Multi Level Report 2: ${cmd}"
 	dimmerEvents(cmd)
 }
 
 def zwaveEvent(physicalgraph.zwave.commands.switchcolorv3.SwitchColorReport cmd) {
+	def result = []
 	logDebug "got SwitchColorReport: $cmd"
-	if (!state.colorReceived) state.colorReceived = ["red": null, "green": null, "blue": null, "warmWhite": null, "coldWhite": null]
-	state.colorReceived[cmd.colorComponent] = cmd.targetValue
-	switch (deviceType) {
-		case 1:
-			// CCT Device Type
-			if (CCT_NAMES.every { state.colorReceived[it] != null }) {
-				// Got all CCT colors
-				def warmWhite = state.colorReceived["warmWhite"]
-				def coldWhite = state.colorReceived["coldWhite"]
-				def colorTemp = COLOR_TEMP_MIN + (COLOR_TEMP_DIFF / 2)
-				if (warmWhite != coldWhite) {
-					colorTemp = (COLOR_TEMP_MAX - (COLOR_TEMP_DIFF * warmWhite) / 255) as Integer
+    if (!state.colorReceived) { 
+    	log.debug "initialize vars" 
+        initializeVars()
+    }
+    log.debug "colorReceived: ${state.colorReceived}" 
+	state.colorReceived[cmd.colorComponent] = cmd.value
+    log.debug "colorReceived: ${state.colorReceived}" 
+	if (deviceType>1) { 
+		if (RGBW_NAMES.every { state.colorReceived[it] != null }) {
+        	log.debug "got every rgbw component" 
+			if (device.currentValue("colorMode") == "RGB") {
+				def hsv=rgbToHSV([state.colorReceived["red"], state.colorReceived["green"], state.colorReceived["blue"]])
+				def hue=hsv["hue"]
+				def sat=hsv["saturation"]
+                log.debug "hsv: ${hsv}"
+                def colors = RGB_NAMES.collect { state.colorReceived[it] }
+                def hexColor = "#" + colors.collect { Integer.toHexString(it).padLeft(2, "0") }.join("")
+				sendEvent(name: "color", value: hexColor)
+				sendEvent(name:"hue", value:Math.round(hue), unit:"%")
+				setGenericName(hue)
+				sendEvent(name:"saturation", value:Math.round(sat), unit:"%")
+				//sendEvent(name:"level", value:Math.round(lvl), unit:"%")
+			} else { 
+				if (wwComponent) {
+					def colorTemp = COLOR_TEMP_MIN + (COLOR_TEMP_DIFF_RGBW / 2)
+					def warmWhite = state.colorReceived["warmWhite"]
+					def coldWhite = state.colorReceived["red"]
+					if (warmWhite != coldWhite) colorTemp = (COLOR_TEMP_MAX - (COLOR_TEMP_DIFF_RGBW * warmWhite) / 255) as Integer
+					sendEvent(name: "colorTemperature", value: colorTemp)
+				} else {
+					// Math is hard
+					sendEvent(name: "colorTemperature", value: state.ctTarget)
+					//sendEvent(name: "colorTemperature", value: rgbToCt(state.colorReceived['red'] as Float, state.colorReceived['green'] as Float, state.colorReceived['blue'] as Float))
 				}
-				sendEvent(name: "colorTemperature", value: colorTemp)
-				// clear state values
-				CCT_NAMES.collect { state.colorReceived[it] = null }
 			}
-		break
-		case 2:
-			// RGBW Device Type
-			if (RGBW_NAMES.every { state.colorReceived[it] != null }) {
-				if (device.currentValue("colorMode") == "RGB") {
-					def hsv=rgbToHSV([state.colorReceived["red"], state.colorReceived["green"], state.colorReceived["blue"]])
-					def hue=hsv[0]
-					def sat=hsv[1]
-                    def lvl=hsv[2]
-                    def colors = RGB_NAMES.collect { state.colorReceived[it] }
-                    def hexColor = "#" + colors.collect { Integer.toHexString(it).padLeft(2, "0") }.join("")
-					sendEvent(name: "color", value: hexColor)
-					sendEvent(name:"hue", value:Math.round(hue), unit:"%")
-					setGenericName(hue)
-					sendEvent(name:"saturation", value:Math.round(sat), unit:"%")
-					//sendEvent(name:"level", value:Math.round(lvl), unit:"%")
-				} else { 
-					if (wwComponent) {
-						def colorTemp = COLOR_TEMP_MIN + (COLOR_TEMP_DIFF_RGBW / 2)
-						def warmWhite = state.colorReceived["warmWhite"]
-						def coldWhite = state.colorReceived["red"]
-						if (warmWhite != coldWhite) colorTemp = (COLOR_TEMP_MAX - (COLOR_TEMP_DIFF_RGBW * warmWhite) / 255) as Integer
-						sendEvent(name: "colorTemperature", value: colorTemp)
-					} else {
-						// Math is hard
-						sendEvent(name: "colorTemperature", value: state.ctTarget)
-						//sendEvent(name: "colorTemperature", value: rgbToCt(state.colorReceived['red'] as Float, state.colorReceived['green'] as Float, state.colorReceived['blue'] as Float))
-					}
-
-				}
-				// clear state values
-				RGBW_NAMES.collect { state.colorReceived[it] = null }
+			// clear state values
+			RGBW_NAMES.collect { state.colorReceived[it] = null }
+		}
+	} else if (deviceType>0) {
+		// CCT Device Type
+		if (CCT_NAMES.every { state.colorReceived[it] != null }) {
+			// Got all CCT colors
+			def warmWhite = state.colorReceived["warmWhite"]
+			def coldWhite = state.colorReceived["coldWhite"]
+			def colorTemp = COLOR_TEMP_MIN + (COLOR_TEMP_DIFF / 2)
+			if (warmWhite != coldWhite) {
+				colorTemp = (COLOR_TEMP_MAX - (COLOR_TEMP_DIFF * warmWhite) / 255) as Integer
 			}
-		break
+			sendEvent(name: "colorTemperature", value: colorTemp)
+			// clear state values
+			CCT_NAMES.collect { state.colorReceived[it] = null }
+		}
 	}
+    result
 }
 
 private dimmerEvents(physicalgraph.zwave.Command cmd) {
@@ -373,7 +398,7 @@ def ping() {
 	refresh()
 }
 
-def setLevel(level, duration = settings.dimmerSpeed) {
+def setLevel(level, duration = 0) {
 	log.debug "setLevel($level, $duration)"
 	level = clamp(level, 0, 99)
 	commands([
@@ -396,13 +421,13 @@ def setHue(value) {
 def setColor(value) {
 	// Sets the color of a device from HSL
 
-	state.colorReceived = ["red": null, "green": null, "blue": null, "warmWhite": null, "coldWhite": null]
+	//state.colorReceived = ["red": null, "green": null, "blue": null, "warmWhite": null, "coldWhite": null]
 	def setValue = [:]
 	def duration=colorDuration?colorDuration:3
 	def rgb=[]
-	log.debug "setColor($value)"
+	log.debug "setColor($value) deviceType: ${deviceType}"
 
-	if (state.deviceType==2) {
+	if (deviceType>1) {
     	if (value.hex) {
 			rgb = value.hex.findAll(/[0-9a-fA-F]{2}/).collect { Integer.parseInt(it, 16) }
 		} else {
@@ -418,22 +443,21 @@ def setColor(value) {
 		
 		log.debug "HSL Converted to R:${rgb[0]} G:${rgb[1]} B:${rgb[2]}"
 		if (enableGammaCorrect) {
-			result << zwave.switchColorV3.switchColorSet(red: gammaCorrect(rgb[0]), green: gammaCorrect(rgb[1]), blue: gammaCorrect(rgb[2]), warmWhite:0, dimmingDuration: duration)
+			result << zwave.switchColorV3.switchColorSet(red: gammaCorrect(rgb[0]), green: gammaCorrect(rgb[1]), blue: gammaCorrect(rgb[2]), warmWhite:0)
 		} else {
-			result << zwave.switchColorV3.switchColorSet(red: rgb[0], green: rgb[1], blue: rgb[2], warmWhite:0, dimmingDuration: duration)
+			result << zwave.switchColorV3.switchColorSet(red: rgb[0], green: rgb[1], blue: rgb[2], warmWhite:0)
 		}
 		if ((device.currentValue("switch") != "on") && !colorPrestage) {
 			log.debug "Turning device on with pre-staging"
  			result << zwave.basicV1.basicSet(value: 0xFF)
 			result << zwave.switchMultilevelV3.switchMultilevelGet()
 		}
-
+        state.ctTarget=temp
 		result+=queryAllColors()
-
 		log.debug "commands: ${result}"
 
 		sendEvent(name: "colorMode", value: "RGB")
-		commands(result)
+		commands(result, 500)
 	} else {
 		log.trace "setColor not supported on this device type"
 	}
@@ -442,38 +466,26 @@ def setColor(value) {
 
 def setColorTemperature(temp) {
 	// Sets the colorTemperature of a device
-	temp = clamp(temp, 1000, 12000)
-	state.colorReceived = ["red": null, "green": null, "blue": null, "warmWhite": null, "coldWhite": null]
+	temp = clamp(temp, COLOR_TEMP_MIN, COLOR_TEMP_MAX)
+	//state.colorReceived = ["red": null, "green": null, "blue": null, "warmWhite": null, "coldWhite": null]
 	def duration=colorDuration?colorDuration:3
 	def warmWhite=0
 	def coldWhite=0
 	if(temp > COLOR_TEMP_MAX) temp = COLOR_TEMP_MAX
 	def result = []
 	log.debug "setColorTemperature($temp)"
-	switch (currentValue("deviceModel")) {
-		case "0": 
+	if (deviceType<1) {
 			// Single Color Device Type
 			log.trace "setColorTemperature not supported on this device type"
-			return
-		break
-		case "1":
-			// Full CCT Devie Type
-			if(temp < COLOR_TEMP_MIN) temp = COLOR_TEMP_MIN
-			state.ctTarget=temp
-			warmValue = ((COLOR_TEMP_MAX - temp) / COLOR_TEMP_DIFF * 255) as Integer
-			coldValue = 255 - warmValue
-			result << zwave.switchColorV3.switchColorSet(warmWhite: warmValue, coldWhite: coldValue, dimmingDuration: duration)
-		break
-		case "2":
-			// RGBW Device type
-			if (wwComponent) {
+	} else if (deviceType>1) {
+    		if (wwComponent) {
 				// LED strip has warm white
 				if(temp < wwKelvin) temp = wwKelvin
 				state.ctTarget=temp
 				def warmValue = ((COLOR_TEMP_MAX - temp) / COLOR_TEMP_DIFF_RGBW * 255) as Integer
 				def coldValue = 255 - warmValue
 				def rgbTemp = ctToRgb(6500)
-				result << zwave.switchColorV3.switchColorSet(red: gammaCorrect(coldValue), green: gammaCorrect(Math.round(coldValue*0.9765)), blue: gammaCorrect(Math.round(coldValue*0.9922)), warmWhite: gammaCorrect(warmValue), dimmingDuration: duration)
+				result << zwave.switchColorV3.switchColorSet(red: gammaCorrect(coldValue), green: gammaCorrect(Math.round(coldValue*0.9765)), blue: gammaCorrect(Math.round(coldValue*0.9922)), warmWhite: gammaCorrect(warmValue))
 			} else {
 				// LED strip is RGB and has no white
 				if(temp < COLOR_TEMP_MIN) temp = COLOR_TEMP_MIN
@@ -481,10 +493,16 @@ def setColorTemperature(temp) {
 				state.ctTarget=temp
 				log.debug "r: " + rgbTemp["r"] + " g: " + rgbTemp["g"] + " b: "+ rgbTemp["b"]
 				log.debug "r: " + gammaCorrect(rgbTemp["r"]) + " g: " + gammaCorrect(rgbTemp["g"]) + " b: " + gammaCorrect(rgbTemp["b"])
-				result << zwave.switchColorV3.switchColorSet(red: gammaCorrect(rgbTemp["r"]), green: gammaCorrect(rgbTemp["g"]), blue: gammaCorrect(rgbTemp["b"]), warmWhite: 0, dimmingDuration: duration)
+				result << zwave.switchColorV3.switchColorSet(red: gammaCorrect(rgbTemp["r"]), green: gammaCorrect(rgbTemp["g"]), blue: gammaCorrect(rgbTemp["b"]), warmWhite: 0)
 			}
-		break
+	} else if (deviceType>0) {
+			if(temp < COLOR_TEMP_MIN) temp = COLOR_TEMP_MIN
+			state.ctTarget=temp
+			warmValue = ((COLOR_TEMP_MAX - temp) / COLOR_TEMP_DIFF * 255) as Integer
+			coldValue = 255 - warmValue
+			result << zwave.switchColorV3.switchColorSet(warmWhite: warmValue, coldWhite: coldValue, dimmingDuration: duration)
 	}
+
 	if ((device.currentValue("switch") != "on") && !colorPrestage) {
 			log.debug "Turning device on with pre-staging"
  			result << zwave.basicV1.basicSet(value: 0xFF)
@@ -498,16 +516,11 @@ def setColorTemperature(temp) {
 
 private queryAllColors() {
 	def cmds=[]
-	switch (currentValue("deviceModel")) {
-		case "1":
-			// cct device type
-			CCT_NAMES.collect { cmds << zwave.switchColorV3.switchColorGet(colorComponentId: ZWAVE_COLOR_COMPONENT_ID[it]) }
-		break
-		case "2":
-			// rgbw device type
-			RGBW_NAMES.collect { cmds << zwave.switchColorV3.switchColorGet(colorComponentId: ZWAVE_COLOR_COMPONENT_ID[it]) }
-		break
-	}
+	if (deviceType>1) {
+		RGBW_NAMES.collect { cmds << zwave.switchColorV3.switchColorGet(colorComponentId: ZWAVE_COLOR_COMPONENT_ID[it]) }
+    } else if (deviceType>0) {
+		CCT_NAMES.collect { cmds << zwave.switchColorV3.switchColorGet(colorComponentId: ZWAVE_COLOR_COMPONENT_ID[it]) }    
+    }
 	return cmds
 }
 
@@ -520,7 +533,7 @@ private crcEncap(physicalgraph.zwave.Command cmd) {
 }
 
 private command(physicalgraph.zwave.Command cmd) {
-	if (currentValue("zwaveSecurePairingComplete") == "true") {
+	if (state.sec == 1) {
 		return zwave.securityV1.securityMessageEncapsulation().encapsulate(cmd).format()
     } else {
 		return cmd.format()
