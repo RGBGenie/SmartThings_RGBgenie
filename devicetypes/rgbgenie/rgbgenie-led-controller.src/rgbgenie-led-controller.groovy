@@ -31,7 +31,8 @@ metadata {
         attribute "deviceModel", "string"
         attribute "effectName", "string"
         attribute "colorMode", "string"
-		attribute "lightEffects", "JSON_OBJECT"        
+		attribute "lightEffects", "JSON_OBJECT"
+        attribute "deviceType", "number"
 
 		fingerprint mfr: "0330", prod: "0200", model: "D002", deviceJoinName: "RGBGenie LED Controller"
         fingerprint mfr: "0330", prod: "0201", model: "D002", deviceJoinName: "RGBGenie LED Controller"
@@ -96,24 +97,24 @@ private getCOLOR_TEMP_MIN() { 2700 }
 private getCOLOR_TEMP_MAX() { 6500 }
 private getCOLOR_TEMP_DIFF_RGBW() { COLOR_TEMP_MAX - wwKelvin }
 private getCOLOR_TEMP_DIFF() { COLOR_TEMP_MAX - COLOR_TEMP_MIN }
-private getCMD_CLASS_VERS() { [0x33:3,0x26:3,0x85:2,0x71:8,0x20:1] }
+private getCMD_CLASS_VERS() { [0x33:3,0x26:3,0x85:2,0x71:8,0x70:2,0x20:1,0x70:2] }
 private getZWAVE_COLOR_COMPONENT_ID() { [warmWhite: 0, coldWhite: 1, red: 2, green: 3, blue: 4] }
 
 
 // parse events into attributes
-def parse(description) {
-	def result=null
-	if (description != "updated") {
-		def cmd = zwave.parse(description)
-        log.debug "parse: ${cmd}"
-		if (cmd) {
-			result = zwaveEvent(cmd)
-			log.debug("${description} parsed to $result")
-		} else {
-			log.warn("unable to parse: ${description}")
-		}
-	}
+
+def parse(String description) {
+        def result = null
+        def cmd = zwave.parse(description, CMD_CLASS_VERS)
+        if (cmd) {
+                result = zwaveEvent(cmd)
+                log.debug "Parsed ${cmd} to ${result.inspect()}"
+        } else {
+                log.debug "Non-parsed event: ${description}"
+        }
+        result
 }
+
 
 def testRed() {
 	def value=255
@@ -161,26 +162,34 @@ def interrogate() {
 def updated() {
 	log.debug "updated().."
 	def cmds = [] 
+  
+
     if (deviceType != state.deviceType) {
 		cmds << zwave.configurationV2.configurationSet([parameterNumber: 4, size: 1, scaledConfigurationValue: deviceType.toInteger()])
-		cmds << zwave.configurationV2.configurationGet([parameterNumber: 4])
         state.deviceType=deviceType
 	}
 	if (loadStateSave != state.loadStateSave) {
     	cmds << zwave.configurationV2.configurationSet([parameterNumber: 2, size: 1, scaledConfigurationValue: loadStateSave.toInteger()])
+		cmds << zwave.configurationV2.configurationGet([parameterNumber: 2])
+
         state.loadStateSave=loadStateSave
     }
 	if (stageModeSpeed != state.stageModeSpeed) {
     	cmds << zwave.configurationV2.configurationSet([parameterNumber: 6, size: 1, scaledConfigurationValue: stageModeSpeed.toInteger()])
+		cmds << zwave.configurationV2.configurationGet([parameterNumber: 6])
+
         state.stageModeSpeed=stageModeSpeed
     }
 	if (stageModeHue != state.stageModeHue) {
     	cmds << zwave.configurationV2.configurationSet([parameterNumber: 8, size: 1, scaledConfigurationValue: hueToHueByte(stageModeHue)])
+        cmds << zwave.configurationV2.configurationGet([parameterNumber: 8])
+
         state.stageModeHue=stageModeHue
     }
-    
+      cmds << zwave.configurationV2.configurationGet([parameterNumber: 4])
+
     log.debug "commands: ${cmds}"
-	commands(cmds)
+	response(commands(cmds))
 }
 
 private hueToHueByte(hueValue) {
@@ -206,9 +215,11 @@ def installed() {
 	log.info "installed()..."
     initializeVars()
 	def cmds = []
-    cmds << zwave.associationV2.associationGet(groupingIdentifier:1)
     cmds << zwave.configurationV2.configurationGet([parameterNumber: 4])
-    commands(cmds)
+    log.debug "install commands: ${cmds}" 
+    sendEvent(name: "level", value: 100)
+    sendEvent(name: "colorTemperature", value: 2700)
+    response(commands(cmds))
 }
 
 def zwaveEvent(physicalgraph.zwave.commands.configurationv2.ConfigurationReport cmd) {
@@ -216,7 +227,8 @@ def zwaveEvent(physicalgraph.zwave.commands.configurationv2.ConfigurationReport 
 	switch (cmd.parameterNumber) {
 		case 4:
         	if (cmd.scaledConfigurationValue!=deviceType) {
-				device.updateSetting("deviceType", [value:cmd.scaledConfigurationValue, type: "number"])
+            	state.deviceType=cmd.scaledConfigurationValue
+//				device.updateSetting("deviceType", [value:cmd.scaledConfigurationValue, type: "number"])
             }
 		break
 		case 5:
@@ -302,7 +314,7 @@ def zwaveEvent(physicalgraph.zwave.commands.switchcolorv3.SwitchColorReport cmd)
     log.debug "colorReceived: ${state.colorReceived}" 
 	state.colorReceived[cmd.colorComponent] = cmd.value
     log.debug "colorReceived: ${state.colorReceived}" 
-	if (deviceType>1) { 
+	if (state.deviceType>1) { 
 		if (RGBW_NAMES.every { state.colorReceived[it] != null }) {
         	log.debug "got every rgbw component" 
 			if (device.currentValue("colorMode") == "RGB") {
@@ -333,7 +345,7 @@ def zwaveEvent(physicalgraph.zwave.commands.switchcolorv3.SwitchColorReport cmd)
 			// clear state values
 			RGBW_NAMES.collect { state.colorReceived[it] = null }
 		}
-	} else if (deviceType>0) {
+	} else if (state.deviceType>0) {
 		// CCT Device Type
 		if (CCT_NAMES.every { state.colorReceived[it] != null }) {
 			// Got all CCT colors
@@ -364,18 +376,13 @@ def zwaveEvent(physicalgraph.zwave.commands.hailv1.Hail cmd) {
 }
 
 def zwaveEvent(physicalgraph.zwave.commands.securityv1.SecurityMessageEncapsulation cmd) {
-	def encapsulatedCommand = cmd.encapsulatedCommand(CMD_CLASS_VERS)
+	def encapsulatedCommand = cmd.encapsulatedCommand()
+    log.debug "got sec encap command: ${cmd.encapsulatedCommand()}"
 	if (encapsulatedCommand) {
-		state.sec = 1
-		def result = zwaveEvent(encapsulatedCommand)
-		result = result.collect {
-			if (it instanceof physicalgraph.device.HubAction && !it.toString().startsWith("9881")) {
-				response(cmd.CMD + "00" + it.toString())
-			} else {
-				it
-			}
-		}
-		result
+		zwaveEvent(encapsulatedCommand)
+	} else {
+		log.warn "Unable to extract encapsulated cmd from $cmd"
+		createEvent(descriptionText: cmd.toString())
 	}
 }
 
@@ -437,7 +444,7 @@ def setColor(value) {
 	def rgb=[]
 	log.debug "setColor($value) deviceType: ${deviceType}"
 
-	if (deviceType>1) {
+	if (state.deviceType>1) {
     	if (value.hex) {
 			rgb = value.hex.findAll(/[0-9a-fA-F]{2}/).collect { Integer.parseInt(it, 16) }
 		} else {
@@ -484,10 +491,10 @@ def setColorTemperature(temp) {
 	if(temp > COLOR_TEMP_MAX) temp = COLOR_TEMP_MAX
 	def result = []
 	log.debug "setColorTemperature($temp)"
-	if (deviceType<1) {
+	if (state.deviceType<1) {
 			// Single Color Device Type
 			log.trace "setColorTemperature not supported on this device type"
-	} else if (deviceType>1) {
+	} else if (state.deviceType>1) {
     		if (wwComponent) {
 				// LED strip has warm white
 				if(temp < wwKelvin) temp = wwKelvin
@@ -505,7 +512,7 @@ def setColorTemperature(temp) {
 				log.debug "r: " + gammaCorrect(rgbTemp["r"]) + " g: " + gammaCorrect(rgbTemp["g"]) + " b: " + gammaCorrect(rgbTemp["b"])
 				result << zwave.switchColorV3.switchColorSet(red: gammaCorrect(rgbTemp["r"]), green: gammaCorrect(rgbTemp["g"]), blue: gammaCorrect(rgbTemp["b"]), warmWhite: 0)
 			}
-	} else if (deviceType>0) {
+	} else if (state.deviceType>0) {
 			if(temp < COLOR_TEMP_MIN) temp = COLOR_TEMP_MIN
 			state.ctTarget=temp
 			warmValue = ((COLOR_TEMP_MAX - temp) / COLOR_TEMP_DIFF * 255) as Integer
@@ -526,9 +533,9 @@ def setColorTemperature(temp) {
 
 private queryAllColors() {
 	def cmds=[]
-	if (deviceType>1) {
+	if (state.deviceType>1) {
 		RGBW_NAMES.collect { cmds << zwave.switchColorV3.switchColorGet(colorComponentId: ZWAVE_COLOR_COMPONENT_ID[it]) }
-    } else if (deviceType>0) {
+    } else if (state.deviceType>0) {
 		CCT_NAMES.collect { cmds << zwave.switchColorV3.switchColorGet(colorComponentId: ZWAVE_COLOR_COMPONENT_ID[it]) }    
     }
 	return cmds
@@ -543,11 +550,13 @@ private crcEncap(physicalgraph.zwave.Command cmd) {
 }
 
 private command(physicalgraph.zwave.Command cmd) {
-	if (state.sec == 1) {
-		return zwave.securityV1.securityMessageEncapsulation().encapsulate(cmd).format()
-    } else {
-		return cmd.format()
-    }	
+	if (zwaveInfo.zw.contains("s")) {
+		secEncap(cmd)
+	} else if (zwaveInfo.cc.contains("56")){
+		crcEncap(cmd)
+	} else {
+		cmd.format()
+	}
 }
 
 private commands(commands, delay=200) {
