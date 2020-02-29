@@ -13,8 +13,7 @@
  *  for the specific language governing permissions and limitations under the License.
  */
 metadata {
-	definition (name: "RGBGenie LED Controller", namespace: "rgbgenie", author: "Bryan Copeland", ocfDeviceType: "oic.d.light", mnmn: "SmartThings", vid: "generic-rgbw-color-bulb",
-				runLocally: false, minHubCoreVersion: '000.017.0012', executeCommandsLocally: false) {
+	definition (name: "RGBGenie LED Controller", namespace: "rgbgenie", author: "Bryan Copeland", ocfDeviceType: "oic.d.light", vid: "generic-rgbw-color-bulb") {
 		capability "Switch"
 		capability "Switch Level"
 		capability "Color Control"
@@ -41,16 +40,16 @@ metadata {
 	}
 	preferences {
 		input name: "deviceType", type: "enum", description: "", title: "Set Device Type", displayDuringSetup: true, required: true, defaultValue: 3, options: [0: "Single Color", 1: "CCT", 2: "RGBW"]
-		input name: "dimmerSpeed", type: "number", description: "", title: "Dimmer Ramp Rate 0-255", defaultValue: 0, required: true, displayDuringSetup: true
+//		input name: "dimmerSpeed", type: "number", description: "", title: "Dimmer Ramp Rate 0-255", defaultValue: 0, required: true, displayDuringSetup: true
 		input name: "loadStateSave", type: "enum", description: "", title: "Power fail load state restore", defaultValue: 0, required: true, displayDuringSetup: true, options: [0: "Shut Off Load", 1: "Turn On Load", 2: "Restore Last State"]
 		input name: "stageModeSpeed", type: "number", description: "", title: "Light Effect Speed 0-255 (default 243)", defaultValue: 243, displayDuringSetup: true, required: true
 		input name: "stageModeHue", type: "number", description: "", title: "Hue Of Fixed Color Light Effects 0-360", defaultValue: 0, displayDuringSetup:true, required: true
 //		input name: "logLevel", type: "enum", title: "Logging Level", options: [1: "Error", 2: "Warn", 3: "Info", 4: "Debug", 5: "Trace"], required: false, displayDuringSetup: false, defaultValue: 4
-		input name: "colorPrestage", type: "bool", description: "", title: "Enable Color Prestaging", defaultValue: false, required: true
-		input name: "colorDuration", type: "number", description: "", title: "Color Transition Duration", defaultValue: 3, required: true			
+//		input name: "colorPrestage", type: "bool", description: "", title: "Enable Color Prestaging", defaultValue: false, required: true
+//		input name: "colorDuration", type: "number", description: "", title: "Color Transition Duration", defaultValue: 3, required: true			
 		input name: "wwComponent", type: "bool", description: "", title: "Enable Warm White Component", defaultValue: true, required: true
 		input name: "wwKelvin", type: "number", description: "", title: "Warm White Temperature", defaultValue: 2700, required: true
-		input name: "hueMode", type: "bool", description: "", title: "Send hue in 0-100 (off) or 0-360 (on)", defaultValue: false, required: true
+//		input name: "hueMode", type: "bool", description: "", title: "Send hue in 0-100 (off) or 0-360 (on)", defaultValue: false, required: true
 		input name: "enableGammaCorrect", type: "bool", description: "May cause a slight difference in reported color", title: "Enable gamma correction on setColor", defaultValue: false, required: true
 
 	}
@@ -162,13 +161,24 @@ def interrogate() {
 def updated() {
 	log.debug "updated().."
 	def cmds = [] 
-    if (deviceType) {
+    if (deviceType != state.deviceType) {
 		cmds << zwave.configurationV2.configurationSet([parameterNumber: 4, size: 1, scaledConfigurationValue: deviceType.toInteger()])
 		cmds << zwave.configurationV2.configurationGet([parameterNumber: 4])
+        state.deviceType=deviceType
 	}
-	if (loadStateSave) cmds << zwave.configurationV2.configurationSet([parameterNumber: 2, size: 1, scaledConfigurationValue: loadStateSave.toInteger()])
-	if (stageModeSpeed) cmds << zwave.configurationV2.configurationSet([parameterNumber: 6, size: 1, scaledConfigurationValue: stageModeSpeed.toInteger()])
-	if (stageModeHue) cmds << zwave.configurationV2.configurationSet([parameterNumber: 8, size: 1, scaledConfigurationValue: hueToHueByte(stageModeHue)])
+	if (loadStateSave != state.loadStateSave) {
+    	cmds << zwave.configurationV2.configurationSet([parameterNumber: 2, size: 1, scaledConfigurationValue: loadStateSave.toInteger()])
+        state.loadStateSave=loadStateSave
+    }
+	if (stageModeSpeed != state.stageModeSpeed) {
+    	cmds << zwave.configurationV2.configurationSet([parameterNumber: 6, size: 1, scaledConfigurationValue: stageModeSpeed.toInteger()])
+        state.stageModeSpeed=stageModeSpeed
+    }
+	if (stageModeHue != state.stageModeHue) {
+    	cmds << zwave.configurationV2.configurationSet([parameterNumber: 8, size: 1, scaledConfigurationValue: hueToHueByte(stageModeHue)])
+        state.stageModeHue=stageModeHue
+    }
+    
     log.debug "commands: ${cmds}"
 	commands(cmds)
 }
