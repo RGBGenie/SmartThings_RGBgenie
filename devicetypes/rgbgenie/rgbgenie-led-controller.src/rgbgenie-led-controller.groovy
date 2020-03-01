@@ -12,13 +12,14 @@
  *  on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License
  *  for the specific language governing permissions and limitations under the License.
  */
-metadata {
-	definition (name: "RGBGenie LED Controller", namespace: "rgbgenie", author: "Bryan Copeland", ocfDeviceType: "oic.d.light", vid: "generic-rgbw-color-bulb") {
+metadata { 
+	definition (name: "RGBGenie LED Controller", namespace: "rgbgenie", author: "Bryan Copeland", ocfDeviceType: "oic.d.light",  mnmn: "SmartThings", vid: "generic-rgbw-color-bulb") {
 		capability "Switch"
 		capability "Switch Level"
 		capability "Color Control"
 		capability "Color Mode"
 		capability "Color Temperature"
+        capability "Refresh"
 		command "testRed"
         command "testGreen"
         command "testBlue"
@@ -30,6 +31,8 @@ metadata {
         
         attribute "deviceModel", "string"
         attribute "effectName", "string"
+        attribute "effectNumber", "number"
+        attribute "effectState", "string"
         attribute "colorMode", "string"
 		attribute "lightEffects", "JSON_OBJECT"
         attribute "deviceType", "number"
@@ -43,6 +46,15 @@ metadata {
 		input name: "deviceType", type: "enum", description: "", title: "Set Device Type", displayDuringSetup: true, required: true, defaultValue: 3, options: [0: "Single Color", 1: "CCT", 2: "RGBW"]
 //		input name: "dimmerSpeed", type: "number", description: "", title: "Dimmer Ramp Rate 0-255", defaultValue: 0, required: true, displayDuringSetup: true
 		input name: "loadStateSave", type: "enum", description: "", title: "Power fail load state restore", defaultValue: 0, required: true, displayDuringSetup: true, options: [0: "Shut Off Load", 1: "Turn On Load", 2: "Restore Last State"]
+       	input name: "stageMode", type: "enum", description: "", title: "Light Effect", defaultValue: 0, displayDuringSetup:false, required: false, options: [
+        			0:"None",
+					1:"Fade in/out mode, fixed color", 
+					2:"Flash mode fixed color",
+					3:"Rainbow Mode, fixed change effect",
+					4:"Fade in/out mode, color changes randomly",
+					5:"Flash Mode, color changes randomly",
+					6:"Rainbow Mode, color changes randomly",
+					7:"Random Mode"]
 		input name: "stageModeSpeed", type: "number", description: "", title: "Light Effect Speed 0-255 (default 243)", defaultValue: 243, displayDuringSetup: true, required: true
 		input name: "stageModeHue", type: "number", description: "", title: "Hue Of Fixed Color Light Effects 0-360", defaultValue: 0, displayDuringSetup:true, required: true
 //		input name: "logLevel", type: "enum", title: "Logging Level", options: [1: "Error", 2: "Warn", 3: "Info", 4: "Debug", 5: "Trace"], required: false, displayDuringSetup: false, defaultValue: 4
@@ -76,13 +88,22 @@ metadata {
 				attributeState "color", action:"color control.setColor"
 			}
 		}
-
-	}
-	controlTile("colorTempSliderControl", "device.colorTemperature", "slider", width: 4, height: 2, inactiveLabel: false, range:"(2700..6500)") {
-		state "colorTemperature", action:"color temperature.setColorTemperature"
-	}
-    main(["switch"])
-	details(["switch", "levelSliderControl", "rgbSelector", "colorTempSliderControl"])
+		controlTile("colorTempSliderControl", "device.colorTemperature", "slider", width: 2, height: 2, inactiveLabel: false, range:"(2700..6500)") {
+			state "colorTemperature", action:"color temperature.setColorTemperature"
+		}
+      	controlTile("previousEffect","device.effectName", "previous", width: 2, height: 2, inactiveLabel: false) {
+        	state "effectName", action: "setPreviousEffect"
+        }
+        controlTile("effectName", "device.effectName", "slider", width: 6, height: 2, range:"(0..7)") {
+        	state "effectName", action:"setEffect"
+    	}
+        controlTile("nextEffect","device.effectName", "next", width: 2, height: 2, inactiveLabel: false) {
+        	state "effectName", label:"${effectName}", action: "setNextEffect"
+        }
+//        controlTile("testColorComponentPrev", "
+    	main(["switch"])
+		details(["switch", "levelSliderControl", "rgbSelector", "colorTempSliderControl", "previousEffect", "effectName", "nextEffect"])
+    }
 }
 
 private getRGBW_NAMES() { [RED, GREEN, BLUE, WARM_WHITE] }
@@ -99,7 +120,7 @@ private getCOLOR_TEMP_DIFF_RGBW() { COLOR_TEMP_MAX - wwKelvin }
 private getCOLOR_TEMP_DIFF() { COLOR_TEMP_MAX - COLOR_TEMP_MIN }
 private getCMD_CLASS_VERS() { [0x33:3,0x26:3,0x85:2,0x71:8,0x70:2,0x20:1,0x70:2] }
 private getZWAVE_COLOR_COMPONENT_ID() { [warmWhite: 0, coldWhite: 1, red: 2, green: 3, blue: 4] }
-
+private getZWAVE_COLOR_COMPONENT_NAME() { [0: "warmWhite", 1: "coldWhite", 2: "red", 3: "green", 4: "blue"]}
 
 // parse events into attributes
 
@@ -115,9 +136,48 @@ def parse(String description) {
         result
 }
 
+def testColorComponentUp() {
+	def colorId=state.testColorId+1
+	if (state.testColorId <= 4) {
+    	state.testColorComponent[colorId]
+        state.testColorId=colorId
+       	testColorComponent()
+    } 
+}
+
+def testColorComponentDown() {
+    def colorId=state.testColorId-1
+	if (state.testColorId > 0) {
+    	state.testColorComponent[colorId]
+        state.testColorId=colorId
+        testColorComponent()
+    } 
+}
+
+def testColorComponent() {
+	def value=255
+	switch (state.testColorId) {
+    	case 0: 
+			commands([zwave.switchColorV3.switchColorSet(red: 0, green: 0, blue: 0, warmWhite: value, coldWhite:0)])
+            break
+		case 1:
+		    commands([zwave.switchColorV3.switchColorSet(red: 0, green: 0, blue: 0, warmWhite: 0, coldWhite: value)])
+			break
+        case 2: 	
+        	commands([zwave.switchColorV3.switchColorSet(red: value, green: 0, blue: 0, warmWhite:0, coldWhite:0)])
+            break
+        case 3:
+        	commands([zwave.switchColorV3.switchColorSet(red: 0, green: value, blue: 0, warmWhite:0, coldWhite:0)])
+       		break
+        case 4:
+        	commands([zwave.switchColorV3.switchColorSet(red: 0, green: 0, blue: value, warmWhite:0, coldWhite:0)])
+            break
+    }
+}
 
 def testRed() {
 	def value=255
+    state.testColor="red"
     commands ([zwave.switchColorV3.switchColorSet(red: value, green: 0, blue: 0, warmWhite:0, coldWhite:0)])
 }
 
@@ -186,6 +246,11 @@ def updated() {
 
         state.stageModeHue=stageModeHue
     }
+    if (stageMode != state.stageMode) {
+    	cmds << zwave.configurationV2.configurationSet([parameterNumber: 5, size: 1, scaledConfigurationValue: stageMode.toInteger()])
+		cmds << zwave.configurationV2.configurationGet([parameterNumber: 5])
+    	state.stageMode=stageMode
+    }
       cmds << zwave.configurationV2.configurationGet([parameterNumber: 4])
 
     log.debug "commands: ${cmds}"
@@ -228,7 +293,7 @@ def zwaveEvent(physicalgraph.zwave.commands.configurationv2.ConfigurationReport 
 		case 4:
         	if (cmd.scaledConfigurationValue!=deviceType) {
             	state.deviceType=cmd.scaledConfigurationValue
-//				device.updateSetting("deviceType", [value:cmd.scaledConfigurationValue, type: "number"])
+//				updateSetting("deviceType", [value:cmd.scaledConfigurationValue, type: "number"])
             }
 		break
 		case 5:
@@ -236,27 +301,35 @@ def zwaveEvent(physicalgraph.zwave.commands.configurationv2.ConfigurationReport 
 			switch (cmd.scaledConfigurationValue) {
 				case 0:
 					effectName="None"
+                    state.effectState="stopped"
 				break
 				case 1:
 					effectName="Fade in/out mode, fixed color"
+                    state.effectState="playing"
 				break
 				case 2:
 					effectName="Flash mode fixed color"
+                    state.effectState="playing"
 				break
 				case 3:
 					effectName="Rainbow Mode, fixed change effect"
+                    state.effectState="playing"
 				break
 				case 4:
 					effectName="Fade in/out mode, color changes randomly"
+                    state.effectState="playing"
 				break
 				case 5:
 					effectName="Flash Mode, color changes randomly"
+                    state.effectState="playing"
 				break
 				case 6:
 					effectName="Rainbow Mode, color changes randomly"
+                    state.effectState="playing"
 				break
 				case 7:
 					effectName="Random Mode"
+                    state.effectState="playing"
 				break
 			}
 			if (device.currentValue("effectName")!=effectName) sendEvent(name: "effectName", value: effectName)
@@ -274,15 +347,22 @@ def setEffect(effectNumber) {
 		cmds << zwave.basicV1.basicSet(value: 0xFF)
 		cmds << zwave.switchMultilevelV3.switchMultilevelGet()
 	}
+    if (effectNumber > 0) {
+    	state.effectState("playing")
+   	} else { 
+    	state.effectState("stopped")
+    }
 	commands(cmds)
 }
 
 def setNextEffect() {
-	if (state.effectNumber < 7) device.setEffect(state.effectNumber+1)
+	if (!state.effectNumber) state.effectNumber=0
+	if (state.effectNumber < 7) setEffect(state.effectNumber+1)
 }
 
 def setPreviousEffect() {
-	if (state.effectNumber > 0) device.setEffect(state.effectNumber-1)
+	if (!state.effectNumber) state.effectNumber=0
+	if (state.effectNumber > 0) setEffect(state.effectNumber-1)
 }
 
 def zwaveEvent(physicalgraph.zwave.commands.basicv1.BasicReport cmd) {
