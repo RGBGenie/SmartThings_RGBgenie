@@ -16,6 +16,7 @@ metadata {
 		capability "Switch"
 		capability "Actuator"
 		attribute "colorMode", "string"
+        attribute "sceneCapture", "boolean"
 	}
     tiles(scale: 2) {
         valueTile("color", "device.color", decoration: "flat", width: 3, height: 1) {
@@ -59,8 +60,17 @@ def updated() {
 }
 
 def installed() {
-	device.updateSetting("logEnable", [value: "true", type: "bool"])
-	runIn(1800,logsOff)
+    state.sceneCapture=false
+}
+
+def enableSceneCapture(value) {
+	state.sceneCapture=value
+    sendEvent(name: "sceneCapture", value: value) 
+    if (value) {
+    	sendEvent(name: "numberOfButtons", value: 0) 
+    } else {
+    	sendEvent(name: "numberOfButtons", value: 3) 
+    }
 }
 
 def logsOff() {
@@ -203,7 +213,7 @@ private dimmerEvents(physicalgraph.zwave.Command cmd) {
 }
 
 def zwaveEvent(physicalgraph.zwave.commands.sceneactuatorconfv1.SceneActuatorConfSet cmd) {
-	if (sceneCapture) {
+	if (state.sceneCapture) {
 		if (!state.scene) { state.scene=[:] }
 		if(device.currentValue("colorMode")=="RGB") {
 			state.scene["${cmd.sceneId}"]=["hue": device.currentValue("hue"), "saturation": device.currentValue("saturation"), "level": device.currentValue("level"), "colorMode": device.currentValue("colorMode"), "switch": device.currentValue("switch")]
@@ -216,7 +226,7 @@ def zwaveEvent(physicalgraph.zwave.commands.sceneactuatorconfv1.SceneActuatorCon
 }
 
 def zwaveEvent(physicalgraph.zwave.commands.sceneactivationv1.SceneActivationSet cmd) {
-	if (sceneCapture) {
+	if (state.sceneCapture) {
 		if (!state.scene) { state.scene=[:] }
 		def scene=state.scene["${cmd.sceneId}"] 
 		scene.each { k, v ->

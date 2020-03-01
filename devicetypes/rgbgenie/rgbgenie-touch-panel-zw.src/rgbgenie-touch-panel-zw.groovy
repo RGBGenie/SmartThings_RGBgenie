@@ -83,6 +83,10 @@ metadata {
         input name: "associationsZ1", type: "string", description: "To add nodes to zone associations use the Hexidecimal nodeID from the IDE device list separated by commas into the space below", title: "Zone 1 Associations", required: false
         input name: "associationsZ2", type: "string", description: "To add nodes to zone associations use the Hexidecimal nodeID from the IDE device list separated by commas into the space below", title: "Zone 2 Associations", required: false
         input name: "associationsZ3", type: "string", description: "To add nodes to zone associations use the Hexidecimal nodeID from the IDE device list separated by commas into the space below", title: "Zone 3 Associations", required: false
+        input name: "sceneMode1", type: "bool", description: "", title:"Enable scene capture / playback on Zone 1", required: false, default: false
+        input name: "sceneMode2", type: "bool", description: "", title:"Enable scene capture / playback on Zone 1", required: false, default: false
+        input name: "sceneMode3", type: "bool", description: "", title:"Enable scene capture / playback on Zone 1", required: false, default: false
+
 //        input name: "logEnable", type: "bool", description: "", title: "Enable Debug Logging", defaultValue: true, required: true
 	}
 }
@@ -124,9 +128,20 @@ def updated() {
             if (!children.any { it -> it.deviceNetworkId == "${device.deviceNetworkId}-$i" } ) {
                 def child=addChildDevice("RGBGenie Touch Panel Child ZW", "${device.deviceNetworkId}-$i", null, [completedSetup: true, label: "${device.displayName} (Zone$i)", isComponent: true, componentName: "zone$i", componentLabel: "Zone $i"])
                 if (child) {
-                    child.defineMe()   
+                    child.defineMe()
 				}        
-            }
+            } else {
+    				def child=null
+        			children.each { it->
+        				if (it.deviceNetworkId=="${device.deviceNetworkId}-$i") {
+            				child=it
+            			}
+                    }
+                    if(child) {
+                    	log.debug "updating child: ${child.deviceNetworkId} setting sceneMode: " + settings."sceneMode$i"
+						child.enableSceneCapture(settings."sceneMode$i")
+                    }
+			}
             addHubMultiChannel(i).each { cmds << it }
 //            cmds += addHubMultiChannel(i)
         } else {
