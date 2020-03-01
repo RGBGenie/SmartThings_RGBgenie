@@ -13,7 +13,7 @@
  *  for the specific language governing permissions and limitations under the License.
  */
 metadata { 
-	definition (name: "RGBGenie LED Controller", namespace: "rgbgenie", author: "Bryan Copeland", ocfDeviceType: "oic.d.light",  mnmn: "SmartThings", vid: "generic-rgbw-color-bulb") {
+	definition (name: "RGBGenie LED Controller ZW", namespace: "rgbgenie", author: "Bryan Copeland", ocfDeviceType: "oic.d.light",  mnmn: "SmartThings", vid: "generic-rgbw-color-bulb") {
 		capability "Switch"
 		capability "Switch Level"
 		capability "Color Control"
