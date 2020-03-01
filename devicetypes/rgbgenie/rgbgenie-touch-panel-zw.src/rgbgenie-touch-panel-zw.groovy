@@ -20,17 +20,60 @@ metadata {
         fingerprint mfr:"0330", prod:"0301", model:"A101", deviceJoinName: "RGBGenie Color Temperature Touch Panel"
 
     }
-    tiles {
-        valueTile("associationsG2", "device.associationG2", decoration: "flat", width: 6, height: 2) {
-            state "associationG2", label:'Z1: ${currentValue}'
-        }
-        valueTile("associationsG3", "device.associationG3", decoration: "flat", width: 6, height: 2) {
-            state "associationG3", label:'Z2: ${currentValue}'
-        }        
-        valueTile("associationsG4", "device.associationG4", decoration: "flat", width: 6, height: 2) {
-            state "associationG4", label:'Z2: ${currentValue}'
+    tiles(scale: 2) {
+        valueTile("associationsG1", "device.associationsG1", decoration: "flat", width: 3, height: 1) {
+            state "associationsG1", label:'G1: ${currentValue}'
         }    
-    	details(["associatiosnG2", "associationsG3", "associationsG4"])
+        valueTile("associationsG2", "device.associationsG2", decoration: "flat", width: 3, height: 1) {
+            state "associationsG2", label:'Z1: ${currentValue}'
+        }
+        valueTile("associationsG3", "device.associationsG3", decoration: "flat", width: 3, height: 1) {
+            state "associationsG3", label:'Z2: ${currentValue}'
+        }        
+        valueTile("associationsG4", "device.associationsG4", decoration: "flat", width: 3, height: 1) {
+            state "associationsG4", label:'Z2: ${currentValue}'
+        }
+        standardTile("associations", "device.status", decoration: "flat", width: 3, height:1) {
+        	state "default", label:'Association'        
+        }
+        standardTile("states", "device.status", decoration: "flat", width: 3, height:1) {
+        	state "default", label:'States'
+        }
+    	standardTile("zone1", "device.status", decoration: "flat", width: 3, height:1) {
+        	state "default", label:'Zone 1'
+        }
+        standardTile("zone2", "device.status", decoration: "flat", width: 3, height:1) {
+        	state "default", label:'Zone 2'
+        }
+        standardTile("zone3", "device.status", decoration: "flat", width: 3, height:1) {
+        	state "default", label:'Zone 3'
+        }
+        childDeviceTile("zone1colorMode", "zone1", decoration: "flat", width: 3, height:1, childTileName: "colorMode") 
+        childDeviceTile("zone1switch", "zone1", decoration: "flat", width: 3, height:1, childTileName: "switch") 
+        childDeviceTile("zone1level", "zone1", decoration: "flat", width: 3, height:1, childTileName: "level") 
+        childDeviceTile("zone1colorTemp", "zone1", decoration: "flat", width: 3, height:1, childTileName: "colorTemp")
+        childDeviceTile("zone1color", "zone1", decoration: "flat", width: 3, height:1, childTileName: "color") 
+        childDeviceTile("zone1hue", "zone1", decoration: "flat", width: 3, height:1, childTileName: "hue") 
+        childDeviceTile("zone2colorMode", "zone2", decoration: "flat", width: 3, height:1, childTileName: "colorMode") 
+        childDeviceTile("zone2switch", "zone2", decoration: "flat", width: 3, height:1, childTileName: "switch") 
+        childDeviceTile("zone2level", "zone2", decoration: "flat", width: 3, height:1, childTileName: "level") 
+        childDeviceTile("zone2colorTemp", "zone2", decoration: "flat", width: 3, height:1, childTileName: "colorTemp")
+        childDeviceTile("zone2color", "zone2", decoration: "flat", width: 3, height:1, childTileName: "color") 
+        childDeviceTile("zone2hue", "zone2", decoration: "flat", width: 3, height:1, childTileName: "hue") 
+        childDeviceTile("zone3colorMode", "zone3", decoration: "flat", width: 3, height:1, childTileName: "colorMode") 
+        childDeviceTile("zone3switch", "zone3", decoration: "flat", width: 3, height:1, childTileName: "switch") 
+        childDeviceTile("zone3level", "zone3", decoration: "flat", width: 3, height:1, childTileName: "level") 
+        childDeviceTile("zone3colorTemp", "zone3", decoration: "flat", width: 3, height:1, childTileName: "colorTemp")
+        childDeviceTile("zone3color", "zone3", decoration: "flat", width: 3, height:1, childTileName: "color") 
+        childDeviceTile("zone3hue", "zone3", decoration: "flat", width: 3, height:1, childTileName: "hue")         
+    	details(["associations","states","associationsG2", "associationsG3", "associationsG4", "associationsG1", 
+        	"zone1", "states", 
+            "zone1colorMode", "zone1switch", "zone1level", "zone1colorTemp", "zone1color", "zone1hue", 
+        	"zone2", "states", 
+            "zone2colorMode", "zone2switch", "zone2level", "zone2colorTemp", "zone2color", "zone2hue",             
+        	"zone3", "states", 
+            "zone3colorMode", "zone3switch", "zone3level", "zone3colorTemp", "zone3color", "zone3hue",             
+            ])
     }
     preferences {
 	    input description: "On the 3 scene only models do not use zone 2 or 3", title: "Zones vs Scenes", displayDuringSetup: false, type: "paragraph", element: "paragraph"
@@ -227,8 +270,8 @@ def processAssociations(){
             def parameterInput=settings."associationsZ$z"
             def newNodeList = []
             def oldNodeList = []
-            if (state."zwaveAssociationG$i" != null) {
-                state."zwaveAssociationG$i".minus("[").minus("]").split(",").each {
+            if (state."zwaveAssociationsG$i" != null) {
+                state."zwaveAssociationsG$i".minus("[").minus("]").split(",").each {
                     if (it!="") {
                         oldNodeList.add(it.minus(" "))
                     }
@@ -268,11 +311,15 @@ def zwaveEvent(physicalgraph.zwave.commands.associationv2.AssociationReport cmd)
        }
     }
     def zone=cmd.groupingIdentifier-1
-    if (logEnable) log.debug "${cmd.groupingIdentifier} - $zone - $temp"
+    log.debug "${cmd.groupingIdentifier} - $zone - $temp"
     if (zone > 0) {
         //device.updateSetting("associationsZ$zone",[value: "${temp.toString().minus("[").minus("]")}", type: "string"])
     }
-    state."zwaveAssociationG${cmd.groupingIdentifier}"="$temp"
+    def group=cmd.groupingIdentifier
+    sendEvent(name: "associationsG$group", value: "$temp")
+    state."associationsG$group"="$temp"
+    log.debug "Sending Event (name: associationsG$group, value: $temp)" 
+	log.debug "associationsG$group: ${state.assocationsG$group}"
 }
 
 def zwaveEvent(physicalgraph.zwave.commands.associationv2.AssociationGroupingsReport cmd) {

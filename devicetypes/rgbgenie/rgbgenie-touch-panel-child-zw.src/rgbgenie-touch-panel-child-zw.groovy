@@ -17,7 +17,28 @@ metadata {
 		capability "Actuator"
 		attribute "colorMode", "string"
 	}
-
+    tiles(scale: 2) {
+        valueTile("color", "device.color", decoration: "flat", width: 3, height: 1) {
+            state "color", label:'color: ${currentValue}'
+        }    
+        valueTile("colorTemp", "device.colorTemperature", decoration: "flat", width: 3, height: 1) {
+            state "colorTemperature", label:'colorTemp: ${currentValue}'
+        }
+        valueTile("level", "device.level", decoration: "flat", width: 3, height: 1) {
+            state "level", label:'level: ${currentValue}'
+        }        
+        valueTile("colorMode", "device.colorMode", decoration: "flat", width: 3, height: 1) {
+            state "colorMode", label:'colorMode: ${currentValue}'
+        }
+        valueTile("switch", "device.switch", decoration: "flat", width: 3, height: 1) {
+            state "switch", label:'switch: ${currentValue}'
+        }
+        valueTile("hue", "device.hue", decoration: "flat", width: 3, height: 1) {
+        	state "hue", label:'hue: ${currentValue}'
+        }
+    	details(["colorMode", "switch", "level", "color", "colorTemp"])
+        
+    }
 	preferences {
 		input name: "logEnable", type: "bool", description: "", title: "Enable Debug Logging", defaultValue: true, required: true
 		input name: "sceneCapture", type: "bool", description: "", title: "Enable scene capture and activate", defaultValue: false, required: true
@@ -43,9 +64,9 @@ def installed() {
 }
 
 def logsOff() {
-	log.warn "debug logging disabled..."
-	device.updateSetting("logEnable", [value: "false", type: "bool"])
-	if (logEnable) runIn(1800,logsOff)
+//	log.warn "debug logging disabled..."
+//	device.updateSetting("logEnable", [value: "false", type: "bool"])
+//	if (logEnable) runIn(1800,logsOff)
 }
 
 def defineMe() {
@@ -144,9 +165,9 @@ def zwaveEvent(physicalgraph.zwave.commands.switchcolorv3.SwitchColorSet cmd) {
 def levelChanging(options){
 	def level=0
 	if (options.upDown) {
-		level=options.level-5
+		level=options.level-10
 	} else {
-		level=options.level+5
+		level=options.level+10
 	}
 	if (level>100) level=100
 	if (level<0) level=0 
@@ -154,14 +175,14 @@ def levelChanging(options){
 	sendEvent(name: "level", value: level == 99 ? 100 : level , unit: "%")
 	if (level>0 && level<100) {
 		if (device.currentValue("switch")=="off") sendEvent(name: "switch", value: "on")
-		runInMillis(500, "levelChanging", [data: [upDown: options.upDown, level: level]])
+		runIn(1, "levelChanging", [data: [upDown: options.upDown, level: level]])
 	} else if (level==0) {
 		if (device.currentValue("switch")=="on") sendEvent(name: "switch", value: "off")
 	}
 }
 
 def zwaveEvent(physicalgraph.zwave.commands.switchmultilevelv3.SwitchMultilevelStartLevelChange cmd){
-	runInMillis(500, "levelChanging", [data: [upDown: cmd.upDown, level: device.currentValue("level")]])
+	runIn(1, "levelChanging", [data: [upDown: cmd.upDown, level: device.currentValue("level")]])
 }
 
 def zwaveEvent(physicalgraph.zwave.commands.switchmultilevelv3.SwitchMultilevelStopLevelChange cmd) {
