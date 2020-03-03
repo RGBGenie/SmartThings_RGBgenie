@@ -518,7 +518,7 @@ def setHue(value) {
 def setColor(value) {
 	// Sets the color of a device from HSL
 
-	//state.colorReceived = ["red": null, "green": null, "blue": null, "warmWhite": null, "coldWhite": null]
+	state.colorReceived = ["red": null, "green": null, "blue": null, "warmWhite": null, "coldWhite": null]
 	def setValue = [:]
 	def duration=colorDuration?colorDuration:3
 	def rgb=[]
@@ -553,8 +553,8 @@ def setColor(value) {
 		result+=queryAllColors()
 		log.debug "commands: ${result}"
 
-		sendEvent(name: "colorMode", value: "RGB")
-		commands(result, 500)
+		if (state.colorMode != "RGB") sendEvent(name: "colorMode", value: "RGB")
+		commands(result, 600)
 	} else {
 		log.trace "setColor not supported on this device type"
 	}
