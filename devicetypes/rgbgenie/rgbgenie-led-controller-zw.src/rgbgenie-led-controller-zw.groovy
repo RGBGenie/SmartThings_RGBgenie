@@ -91,18 +91,9 @@ metadata {
 		controlTile("colorTempSliderControl", "device.colorTemperature", "slider", width: 2, height: 2, inactiveLabel: false, range:"(2700..6500)") {
 			state "colorTemperature", action:"color temperature.setColorTemperature"
 		}
-      	controlTile("previousEffect","device.effectName", "previous", width: 2, height: 2, inactiveLabel: false) {
-        	state "effectName", action: "setPreviousEffect"
-        }
-        controlTile("effectName", "device.effectName", "slider", width: 6, height: 2, range:"(0..7)") {
-        	state "effectName", action:"setEffect"
-    	}
-        controlTile("nextEffect","device.effectName", "next", width: 2, height: 2, inactiveLabel: false) {
-        	state "effectName", label:"${effectName}", action: "setNextEffect"
-        }
 //        controlTile("testColorComponentPrev", "
     	main(["switch"])
-		details(["switch", "levelSliderControl", "rgbSelector", "colorTempSliderControl", "previousEffect", "effectName", "nextEffect"])
+		details(["switch", "levelSliderControl", "rgbSelector", "colorTempSliderControl"])
     }
 }
 
@@ -608,7 +599,7 @@ def setColorTemperature(temp) {
 	result+=queryAllColors()
 	logDebug result
 	sendEvent(name: "colorMode", value: "CT")
-	commands(result)
+	commands(result,600)
 }
 
 private queryAllColors() {
